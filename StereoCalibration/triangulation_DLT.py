@@ -121,7 +121,7 @@ def triangulate(mtx1, mtx2, R, T):
     p3ds = np.array(p3ds)
 
     print(p3ds)
-    return
+    return p3ds
 
     from mpl_toolkits.mplot3d import Axes3D
 
