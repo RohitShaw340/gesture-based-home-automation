@@ -2,6 +2,9 @@ use std::cmp::Ordering;
 
 use error_stack::{Result, ResultExt};
 use glam::{EulerRot, Quat, Vec3A};
+use nalgebra::base::Matrix4;
+use nalgebra::linalg::SVD;
+use nalgebra::DMatrix; // nalgebra can be used for SVD
 use rust_3d::{IsNormalized3D, Line3D, Norm3D, Point3D};
 
 use crate::{
@@ -65,6 +68,89 @@ pub fn calc_position(
     let line2 = Line::new(camera2.pos(), &dir2);
 
     line1.closest_point_bw(&line2)
+}
+
+fn triangulation(
+    camera1: &CameraProperties,
+    img_coords1: &ImageCoords,
+    camera2: &CameraProperties,
+    img_coords2: &ImageCoords,
+) -> Result<Vec3A, &'static str> {
+    // Construct the projection matrices for both cameras
+    let p1 = construct_projection_matrix(camera1);
+    let p2 = construct_projection_matrix(camera2);
+
+    // Call the DLT function to triangulate the point
+    let point_3d = dlt(&p1, &p2, img_coords1, img_coords2);
+
+    Ok(point_3d)
+}
+
+fn construct_projection_matrix(camera: &CameraProperties) -> [[f64; 4]; 3] {
+    // Intrinsic matrix
+    let k = camera.intrensic_prams;
+
+    // Rotation matrix
+    let r = camera.rotation_matrix;
+
+    // Translation vector
+    let t = [
+        camera.pos_x as f64,
+        camera.pos_y as f64,
+        camera.pos_z as f64,
+    ];
+
+    // Concatenate the rotation matrix and translation vector to form the RT matrix
+    [
+        [r[0][0], r[0][1], r[0][2], t[0]],
+        [r[1][0], r[1][1], r[1][2], t[1]],
+        [r[2][0], r[2][1], r[2][2], t[2]],
+    ]
+}
+
+fn dlt(
+    p1: &[[f64; 4]; 3],
+    p2: &[[f64; 4]; 3],
+    point1: &ImageCoords,
+    point2: &ImageCoords,
+) -> Vec3A {
+    // Create the A matrix for solving the linear system
+    let a = DMatrix::from_row_slice(
+        4,
+        4,
+        &[
+            point1.y as f64 * p1[2][0] - p1[1][0],
+            point1.y as f64 * p1[2][1] - p1[1][1],
+            point1.y as f64 * p1[2][2] - p1[1][2],
+            point1.y as f64 * p1[2][3] - p1[1][3],
+            p1[0][0] - point1.x as f64 * p1[2][0],
+            p1[0][1] - point1.x as f64 * p1[2][1],
+            p1[0][2] - point1.x as f64 * p1[2][2],
+            p1[0][3] - point1.x as f64 * p1[2][3],
+            point2.y as f64 * p2[2][0] - p2[1][0],
+            point2.y as f64 * p2[2][1] - p2[1][1],
+            point2.y as f64 * p2[2][2] - p2[1][2],
+            point2.y as f64 * p2[2][3] - p2[1][3],
+            p2[0][0] - point2.x as f64 * p2[2][0],
+            p2[0][1] - point2.x as f64 * p2[2][1],
+            p2[0][2] - point2.x as f64 * p2[2][2],
+            p2[0][3] - point2.x as f64 * p2[2][3],
+        ],
+    );
+
+    // Perform SVD on A^T * A
+    let b = a.transpose() * a;
+    let svd = SVD::new(b, true, true);
+
+    // The solution is the last row of V (or Vh), normalized by its fourth component
+    let v = svd.vt.unwrap();
+    let point_3d = Vec3A::new(
+        v[(3, 0)] as f32 / v[(3, 3)] as f32,
+        v[(3, 1)] as f32 / v[(3, 3)] as f32,
+        v[(3, 2)] as f32 / v[(3, 3)] as f32,
+    );
+
+    point_3d
 }
 
 pub fn calc_pos_dir_vec(camera: &CameraProperties, coords: &ImageCoords) -> Vec3A {
