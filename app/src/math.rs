@@ -2,6 +2,9 @@ use std::cmp::Ordering;
 
 use error_stack::{Result, ResultExt};
 use glam::{EulerRot, Quat, Vec3A};
+use nalgebra::base::Matrix4;
+use nalgebra::linalg::SVD;
+use nalgebra::DMatrix; // nalgebra can be used for SVD
 use rust_3d::{IsNormalized3D, Line3D, Norm3D, Point3D};
 
 use crate::{
