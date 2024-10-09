@@ -31,8 +31,8 @@ pub struct CameraProperties {
 impl CameraProperties {
     pub fn test_new() -> Self {
         let sample_intrensic_matrix = [
-            [1.4253555975305719e+03, 0., 7.2552788750799868e+02],
-            [0., 1.4039605486267199e+03, 4.0030984906993211e+02],
+            [1.425_355_597_530_572e3, 0., 7.255_278_875_079_987e22],
+            [0., 1.403_960_548_626_719_9e3, 4.003_098_490_699_321e2],
             [0., 0., 1.],
         ];
         let sample_rotation_matrix = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -40,13 +40,13 @@ impl CameraProperties {
             pos_x: 0.0,
             pos_y: 0.0,
             pos_z: 0.0,
-            fov_x: 1.0472, // 60 degrees
+            fov_x: std::f32::consts::FRAC_PI_3, // 60 degrees
             fov_y: 0.58905,
             pitch: 0.0,
             yaw: 0.0,
             roll: 0.0,
-            intrensic_prams: &sample_intrensic_matrix,
-            rotation_matrix: &sample_rotation_matrix,
+            intrensic_prams: sample_intrensic_matrix,
+            rotation_matrix: sample_rotation_matrix,
             img_height: 720,
             img_width: 1280,
             quat: OnceLock::new(),
@@ -87,25 +87,25 @@ mod tests {
     #[test]
     fn test_dir_vec() {
         let sample_intrensic_matrix = [
-            [1.4253555975305719e+03, 0., 7.2552788750799868e+02],
-            [0., 1.4039605486267199e+03, 4.0030984906993211e+02],
+            [1.425_355_597_530_572e3, 0., 7.255_278_875_079_987e22],
+            [0., 1.403_960_548_626_719_9e3, 4.003_098_490_699_321e2],
             [0., 0., 1.],
         ];
         let sample_rotation_matrix = [
             [
-                9.9165936444845415e-01,
-                8.3969100257135582e-02,
-                9.7779829738525781e-02,
+                9.916_593_644_484_542e-1,
+                8.396_910_025_713_558e-2,
+                9.777_982_973_852_578e-2,
             ],
             [
-                -8.9473106805596891e-02,
-                9.9456050000375096e-01,
-                5.3328932024213592e-02,
+                -8.947_310_680_559_689e-2,
+                9.945_605_000_037_51e-1,
+                5.332_893_202_421_359e-2,
             ],
             [
-                -9.2769973915282689e-02,
-                -6.1632799987474653e-02,
-                9.9377820961493302e-01,
+                -9.276_997_391_528_269e-2,
+                -6.163_279_998_747_465e-2,
+                9.937_782_096_149_33e-1,
             ],
         ];
         let camera = CameraProperties {
@@ -117,8 +117,8 @@ mod tests {
             pitch: 0.2,
             yaw: 0.69,
             roll: -0.69,
-            intrensic_prams: &sample_intrensic_matrix,
-            rotation_matrix: &sample_rotation_matrix,
+            intrensic_prams: sample_intrensic_matrix,
+            rotation_matrix: sample_rotation_matrix,
             img_height: 720,
             img_width: 1280,
             quat: OnceLock::new(),

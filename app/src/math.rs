@@ -143,14 +143,13 @@ fn dlt(
     let svd = SVD::new(b, true, true);
 
     // The solution is the last row of V (or Vh), normalized by its fourth component
-    let v = svd.vt.unwrap();
-    let point_3d = Vec3A::new(
+    let v = svd.v_t.unwrap();
+
+    Vec3A::new(
         v[(3, 0)] as f32 / v[(3, 3)] as f32,
         v[(3, 1)] as f32 / v[(3, 3)] as f32,
         v[(3, 2)] as f32 / v[(3, 3)] as f32,
-    );
-
-    point_3d
+    )
 }
 
 pub fn calc_pos_dir_vec(camera: &CameraProperties, coords: &ImageCoords) -> Vec3A {
@@ -264,6 +263,24 @@ pub fn sort_align<T: HasImagePosition>(v: &mut Vec<T>, theta: f32) {
     })
 }
 
+pub fn sort_horizontal<T: HasImagePosition>(v: &mut Vec<T>) {
+    v.sort_by(|a, b| {
+        let cmp = a
+            .image_y()
+            .partial_cmp(&b.image_y())
+            .map(|cmp| {
+                if let Ordering::Equal = cmp {
+                    a.image_x().partial_cmp(&b.image_x())
+                } else {
+                    Some(cmp)
+                }
+            })
+            .flatten();
+
+        cmp.unwrap_or(Ordering::Equal)
+    })
+}
+
 pub fn angle_bw_cameras_from_z_axis(camera1: &CameraProperties, camera2: &CameraProperties) -> f32 {
     let rvec = *camera1.pos() - *camera2.pos();
 
@@ -301,6 +318,9 @@ mod tests {
         camera2.pos_y = 0.0;
         camera2.pos_z = 0.0;
 
-        assert_eq!(0.7853982, angle_bw_cameras_from_z_axis(&camera1, &camera2))
+        assert_eq!(
+            std::f32::consts::FRAC_PI_4,
+            angle_bw_cameras_from_z_axis(&camera1, &camera2)
+        )
     }
 }

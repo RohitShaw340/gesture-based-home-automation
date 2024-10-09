@@ -42,30 +42,37 @@ impl CameraProc {
         }
     }
 
-    pub fn run(&self) -> JoinHandle<()> {
+    pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
         let instance = self.clone();
+        // TODO: logging
         println!("Head Detection model connected");
 
-        instance.send_u32(self.w1).unwrap();
-        instance.send_u32(self.h1).unwrap();
+        let w1 = self.w1;
+        let w2 = self.w2;
+        let h1 = self.h1;
+        let h2 = self.h2;
 
-        instance.send_u32(self.w2).unwrap();
-        instance.send_u32(self.h2).unwrap();
+        thread::spawn(move || {
+            instance.send_u32(w1)?;
+            instance.send_u32(h1)?;
 
-        thread::spawn(move || loop {
-            let sig = instance.recv_data().unwrap();
+            instance.send_u32(w2)?;
+            instance.send_u32(h2)?;
+            loop {
+                let sig = instance.recv_data()?;
 
-            instance.send_u32(sig).unwrap();
-            let img1 = instance.recv_ipc().unwrap();
-            instance.send_u32(2).unwrap();
-            let img2 = instance.recv_ipc().unwrap();
+                instance.send_u32(sig)?;
+                let img1 = instance.recv_ipc()?;
+                instance.send_u32(2)?;
+                let img2 = instance.recv_ipc()?;
 
-            let res = Frames {
-                cam1: img1,
-                cam2: img2,
-            };
+                let res = Frames {
+                    cam1: img1,
+                    cam2: img2,
+                };
 
-            instance.send_response(res).unwrap();
+                instance.send_response(res)?;
+            }
         })
     }
 

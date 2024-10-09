@@ -6,10 +6,13 @@ use std::{
     fmt,
     io::Read,
     os::unix::net::{UnixListener, UnixStream},
-    usize,
+    sync::{Arc, RwLock, RwLockReadGuard},
+    thread, usize,
 };
 
-use models::{GestureDetection, HeadDetection, HeadPoseEstimation};
+use models::{
+    GestureDetection, GesturePreds, HPEPreds, HeadDetection, HeadPoseEstimation, HeadPreds,
+};
 
 mod error;
 
@@ -92,102 +95,127 @@ impl fmt::Display for Process {
 }
 
 pub struct Models {
-    pset: HashSet<Process>,
+    pset: Arc<RwLock<HashSet<Process>>>,
     num: usize,
     listener: UnixListener,
-    hpe: Option<HeadPoseEstimation>,
-    gesture: Option<GestureDetection>,
-    head: Option<HeadDetection>,
-    cams: Option<CameraProc>,
+    hpe: Arc<RwLock<Option<HeadPoseEstimation>>>,
+    gesture: Arc<RwLock<Option<GestureDetection>>>,
+    head: Arc<RwLock<Option<HeadDetection>>>,
+    cams: Arc<RwLock<Option<CameraProc>>>,
 }
 
 impl Models {
     pub fn new(num: usize, listener: UnixListener) -> Self {
         Self {
-            pset: HashSet::new(),
-            hpe: None,
-            gesture: None,
-            head: None,
-            cams: None,
+            pset: Default::default(),
+            hpe: Default::default(),
+            gesture: Default::default(),
+            head: Default::default(),
+            cams: Default::default(),
             num,
             listener,
         }
     }
 
     pub fn hpe(&self) -> Result<HeadPoseEstimation, GError> {
-        if let Some(hpe) = &self.hpe {
-            Ok(hpe.clone())
-        } else {
-            Err(GError::ModelUninit).change_context(GError::ModelUninit)
-        }
+        self.hpe
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or(GError::ModelUninit.into())
     }
 
     pub fn gesture(&self) -> Result<GestureDetection, GError> {
-        if let Some(gesture) = &self.gesture {
-            Ok(gesture.clone())
-        } else {
-            Err(GError::ModelUninit).change_context(GError::ModelUninit)
-        }
+        self.gesture
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or(GError::ModelUninit.into())
     }
 
     pub fn head_detection(&self) -> Result<HeadDetection, GError> {
-        if let Some(head) = &self.head {
-            Ok(head.clone())
-        } else {
-            Err(GError::ModelUninit).change_context(GError::ModelUninit)
-        }
+        self.head
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or(GError::ModelUninit.into())
     }
 
     pub fn cams(&self) -> Result<CameraProc, GError> {
-        if let Some(cams) = &self.cams {
-            Ok(cams.clone())
-        } else {
-            Err(GError::ModelUninit).change_context(GError::ModelUninit)
-        }
+        self.cams
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or(GError::ModelUninit.into())
     }
 
     pub fn add_process(&mut self, model: Process, stream: UnixStream, config: &Config) {
         match model {
             Process::HPE => {
                 let model = HeadPoseEstimation::new(stream);
-
-                model.run();
-
-                self.hpe = Some(model);
+                let handle = model.run();
+                {
+                    *self.hpe.write().unwrap() = Some(model);
+                }
+                let hpe = self.hpe.clone();
+                thread::spawn(move || {
+                    // TODO: logging
+                    handle.join();
+                    *hpe.write().unwrap() = None;
+                });
             }
             Process::GestureRecognition => {
                 let model = GestureDetection::new(stream);
-
-                model.run();
-
-                self.gesture = Some(model)
+                let handle = model.run();
+                {
+                    *self.gesture.write().unwrap() = Some(model);
+                }
+                let gesture = self.gesture.clone();
+                thread::spawn(move || {
+                    // TODO: logging
+                    handle.join();
+                    *gesture.write().unwrap() = None;
+                });
             }
             Process::HeadDetection => {
                 let model = HeadDetection::new(stream);
-
-                model.run();
-
-                self.head = Some(model)
+                let handle = model.run();
+                {
+                    *self.head.write().unwrap() = Some(model);
+                }
+                let head = self.head.clone();
+                thread::spawn(move || {
+                    // TODO: logging
+                    handle.join();
+                    *head.write().unwrap() = None;
+                });
             }
             Process::Camera => {
-                let camp = CameraProc::new(
+                let model = CameraProc::new(
                     stream,
                     config.camera1.img_width,
                     config.camera1.img_height,
                     config.camera2.img_width,
                     config.camera2.img_height,
                 );
-
-                camp.run();
-
-                self.cams = Some(camp)
+                let handle = model.run();
+                {
+                    *self.cams.write().unwrap() = Some(model);
+                }
+                let cams = self.cams.clone();
+                thread::spawn(move || {
+                    // TODO: logging
+                    handle.join();
+                    *cams.write().unwrap() = None;
+                });
             }
         }
-        self.pset.insert(model);
+
+        self.pset.write().unwrap().insert(model);
     }
 
     pub fn len(&self) -> usize {
-        self.pset.len()
+        self.pset.read().unwrap().len()
     }
 
     pub fn wait_for_connection(&mut self, config: &Config) {
@@ -203,5 +231,102 @@ impl Models {
             self.add_process(model, stream, config);
             println!("Processes connected: {}", self.len())
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageFrame {
+    pub frame: Arc<[u8]>,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub struct App {
+    config: Config,
+    pub models: Models,
+}
+
+impl App {
+    pub fn new(config: Config, models: Models) -> App {
+        App { config, models }
+    }
+
+    pub fn next(
+        &self,
+        frame1: ImageFrame,
+        frame2: ImageFrame,
+    ) -> error_stack::Result<Option<Vec<(config::Device, models::Gesture)>>, GError> {
+        let (gestures, head_positions) = {
+            // send frame1 to gesture detection model
+            self.models.gesture()?.send(frame1.clone())?;
+            // send frame2 to head detection model
+            self.models.head_detection()?.send(frame2)?;
+
+            let mut head_positions = self.models.head_detection()?.recv()?;
+            let mut gestures = self.models.gesture()?.recv()?;
+
+            math::sort_horizontal(&mut head_positions);
+            math::sort_horizontal(&mut gestures);
+
+            (gestures, head_positions)
+        };
+
+        // proceed if any gesture is not none
+        if gestures.iter().find(|x| !x.is_none()).is_some() {
+            // send frame1 to hpe model
+            self.models.hpe()?.send(frame1.clone())?;
+
+            // in the meantime calculate positition of head which had a gesture
+            let positions = gestures.iter().zip(head_positions.iter()).map(|(g, h)| {
+                if !g.is_none() {
+                    Some((
+                        math::calc_position(
+                            &self.config.camera1,
+                            &g.image_coords(
+                                self.config.camera1.img_width,
+                                self.config.camera1.img_height,
+                            ),
+                            &self.config.camera2,
+                            &h.image_coords(
+                                self.config.camera2.img_width,
+                                self.config.camera2.img_height,
+                            ),
+                        )
+                        .unwrap(),
+                        g.gesture.clone(),
+                    ))
+                } else {
+                    None
+                }
+            });
+
+            let head_poses = {
+                let mut hp = self.models.hpe().unwrap().recv().unwrap();
+                math::sort_horizontal(&mut hp);
+                hp
+            };
+
+            // Now get the device in line of sight of each head
+            return Ok(Some(
+                head_poses
+                    .iter()
+                    .zip(positions)
+                    .filter_map(|(pose, position)| {
+                        let (position, gesture) = if let Some((position, gesture)) = position {
+                            (position, gesture)
+                        } else {
+                            return None;
+                        };
+
+                        let line_of_sight =
+                            math::get_los(&self.config.camera1, &position, &pose.quat());
+                        math::get_closest_device_in_los_alt(&self.config, line_of_sight)
+                            .map(|x| (x, gesture))
+                    })
+                    .collect(),
+            ));
+        }
+
+        Ok(None)
     }
 }

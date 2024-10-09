@@ -5,13 +5,13 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use error_stack::Result;
+use error_stack::{Result, ResultExt};
 use flume::{unbounded, Receiver, Sender};
 use serde::Deserialize;
 
 use crate::{
     traits::{Responder, WantIpc},
-    GError, HasImagePosition, ImageProcessor,
+    GError, HasImagePosition, ImageFrame, ImageProcessor,
 };
 
 #[derive(Clone)]
@@ -38,23 +38,24 @@ impl HeadDetection {
         }
     }
 
-    pub fn run(&self) -> JoinHandle<()> {
+    pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
         let instance = self.clone();
+        // TODO: logging
         println!("Head Detection model connected");
 
         thread::spawn(move || loop {
-            let (w, h, _img) = instance.recv_img().unwrap();
+            let (w, h, _img) = instance.recv_img()?;
 
-            instance.send_ipc(&_img, w, h).unwrap();
-            let res = instance.recv_ipc().unwrap();
-            let res: HeadPreds = serde_json::from_slice(&res).unwrap();
+            instance.send_ipc(&_img, w, h)?;
+            let res = instance.recv_ipc()?;
+            let res: HeadPreds = serde_json::from_slice(&res).change_context(GError::IpcError)?;
 
-            instance.send_response(res).unwrap();
+            instance.send_response(res)?;
         })
     }
 
-    pub fn send(&self, img: Arc<[u8]>, w: u32, h: u32) -> Result<(), GError> {
-        self.send_img(img, w, h)
+    pub fn send(&self, img: ImageFrame) -> Result<(), GError> {
+        self.send_img(img.frame, img.width, img.height)
     }
 
     pub fn recv(&self) -> Result<HeadPreds, GError> {
