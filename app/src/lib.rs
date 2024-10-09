@@ -1,18 +1,16 @@
 use camera::CameraProc;
 use config::Config;
-use error_stack::{Result, ResultExt};
+use error_stack::Result;
 use std::{
     collections::HashSet,
     fmt,
     io::Read,
     os::unix::net::{UnixListener, UnixStream},
-    sync::{Arc, RwLock, RwLockReadGuard},
-    thread, usize,
+    sync::{Arc, RwLock},
+    thread,
 };
 
-use models::{
-    GestureDetection, GesturePreds, HPEPreds, HeadDetection, HeadPoseEstimation, HeadPreds,
-};
+use models::{GestureDetection, HeadDetection, HeadPoseEstimation};
 
 mod error;
 
@@ -218,6 +216,10 @@ impl Models {
         self.pset.read().unwrap().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn wait_for_connection(&mut self, config: &Config) {
         while self.len() < self.num {
             let (mut stream, _addr) = self.listener.accept().unwrap();
@@ -272,7 +274,7 @@ impl App {
         };
 
         // proceed if any gesture is not none
-        if gestures.iter().find(|x| !x.is_none()).is_some() {
+        if gestures.iter().any(|x| !x.is_none()) {
             // send frame1 to hpe model
             self.models.hpe()?.send(frame1.clone())?;
 

@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 use error_stack::{Result, ResultExt};
 use glam::{EulerRot, Quat, Vec3A};
-use nalgebra::base::Matrix4;
 use nalgebra::linalg::SVD;
 use nalgebra::DMatrix; // nalgebra can be used for SVD
 use rust_3d::{IsNormalized3D, Line3D, Norm3D, Point3D};
@@ -70,7 +69,7 @@ pub fn calc_position(
     line1.closest_point_bw(&line2)
 }
 
-fn triangulation(
+pub fn triangulation(
     camera1: &CameraProperties,
     img_coords1: &ImageCoords,
     camera2: &CameraProperties,
@@ -243,7 +242,7 @@ pub fn get_closest_device_in_los_alt(config: &Config, line: Line) -> Option<Devi
         })?
 }
 
-pub fn sort_align<T: HasImagePosition>(v: &mut Vec<T>, theta: f32) {
+pub fn sort_align<T: HasImagePosition>(v: &mut [T], theta: f32) {
     let y = |x: f32, y: f32| x * theta.cos() + y * theta.sin();
     let x = |x: f32, y: f32| x * theta.sin() + y * theta.cos();
 
@@ -263,19 +262,15 @@ pub fn sort_align<T: HasImagePosition>(v: &mut Vec<T>, theta: f32) {
     })
 }
 
-pub fn sort_horizontal<T: HasImagePosition>(v: &mut Vec<T>) {
+pub fn sort_horizontal<T: HasImagePosition>(v: &mut [T]) {
     v.sort_by(|a, b| {
-        let cmp = a
-            .image_y()
-            .partial_cmp(&b.image_y())
-            .map(|cmp| {
-                if let Ordering::Equal = cmp {
-                    a.image_x().partial_cmp(&b.image_x())
-                } else {
-                    Some(cmp)
-                }
-            })
-            .flatten();
+        let cmp = a.image_y().partial_cmp(&b.image_y()).and_then(|cmp| {
+            if let Ordering::Equal = cmp {
+                a.image_x().partial_cmp(&b.image_x())
+            } else {
+                Some(cmp)
+            }
+        });
 
         cmp.unwrap_or(Ordering::Equal)
     })

@@ -5,7 +5,7 @@ use glam::{Quat, Vec3A};
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::{sync::Arc, u8};
+use std::sync::Arc;
 
 use crate::GError;
 use crate::ImageCoords;
