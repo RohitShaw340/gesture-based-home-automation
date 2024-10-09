@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, RwLock},
     thread,
 };
+use strum::EnumCount;
 
 use models::{GestureDetection, HeadDetection, HeadPoseEstimation};
 
@@ -61,7 +62,7 @@ impl ImageCoords {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(strum_macros::EnumCount, PartialEq, Eq, Hash)]
 pub enum Process {
     HPE,
     GestureRecognition,
@@ -94,7 +95,6 @@ impl fmt::Display for Process {
 
 pub struct Models {
     pset: Arc<RwLock<HashSet<Process>>>,
-    num: usize,
     listener: UnixListener,
     hpe: Arc<RwLock<Option<HeadPoseEstimation>>>,
     gesture: Arc<RwLock<Option<GestureDetection>>>,
@@ -103,14 +103,13 @@ pub struct Models {
 }
 
 impl Models {
-    pub fn new(num: usize, listener: UnixListener) -> Self {
+    pub fn new(listener: UnixListener) -> Self {
         Self {
             pset: Default::default(),
             hpe: Default::default(),
             gesture: Default::default(),
             head: Default::default(),
             cams: Default::default(),
-            num,
             listener,
         }
     }
@@ -221,7 +220,7 @@ impl Models {
     }
 
     pub fn wait_for_connection(&mut self, config: &Config) {
-        while self.len() < self.num {
+        while self.len() < Process::COUNT {
             let (mut stream, _addr) = self.listener.accept().unwrap();
 
             let mut buffer = [0; 1024];
@@ -244,7 +243,7 @@ pub struct ImageFrame {
 }
 
 pub struct App {
-    config: Config,
+    pub config: Config,
     pub models: Models,
 }
 
@@ -262,7 +261,7 @@ impl App {
             // send frame1 to gesture detection model
             self.models.gesture()?.send(frame1.clone())?;
             // send frame2 to head detection model
-            self.models.head_detection()?.send(frame2)?;
+            self.models.head_detection()?.send(frame2.clone())?;
 
             let mut head_positions = self.models.head_detection()?.recv()?;
             let mut gestures = self.models.gesture()?.recv()?;
@@ -284,15 +283,9 @@ impl App {
                     Some((
                         math::calc_position(
                             &self.config.camera1,
-                            &g.image_coords(
-                                self.config.camera1.img_width,
-                                self.config.camera1.img_height,
-                            ),
+                            &g.image_coords(frame1.width, frame1.height),
                             &self.config.camera2,
-                            &h.image_coords(
-                                self.config.camera2.img_width,
-                                self.config.camera2.img_height,
-                            ),
+                            &h.image_coords(frame2.width, frame2.height),
                         )
                         .unwrap(),
                         g.gesture.clone(),

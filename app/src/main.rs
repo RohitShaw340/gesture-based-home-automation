@@ -1,19 +1,13 @@
 use std::os::unix::net::UnixListener;
-use std::sync::Arc;
 use std::time::Instant;
 
 use gesture_ease::config::Config;
-use gesture_ease::math::{
-    angle_bw_cameras_from_z_axis, calc_position, get_closest_device_in_los_alt, get_los, sort_align,
-};
-use gesture_ease::models::{GesturePreds, HPEPreds, HeadPreds};
-use gesture_ease::{App, GError, HasGlamQuat, HasImagePosition, Models};
+use gesture_ease::{App, GError, Models};
 
 use rppal::gpio::Gpio;
 
 fn main() {
     let socket_path = "/tmp/gesurease.sock";
-    let num_processes = 4;
 
     if std::fs::metadata(socket_path).is_ok() {
         // TODO: logging
@@ -24,9 +18,9 @@ fn main() {
     let config = Config::open("config.toml".into()).unwrap();
 
     let listener = UnixListener::bind(socket_path).unwrap();
-    let mut process_map = Models::new(num_processes, listener);
+    let mut process_map = Models::new(listener);
 
-    let theta = angle_bw_cameras_from_z_axis(&config.camera1, &config.camera2);
+    //let theta = angle_bw_cameras_from_z_axis(&config.camera1, &config.camera2);
 
     let gpio = Gpio::new().unwrap();
 
@@ -40,19 +34,19 @@ fn main() {
 
     let app = App::new(config, process_map);
 
-    let mut run = || -> error_stack::Result<(), GError> {
-        let frames = process_map.cams()?.get()?;
+    let run = || -> error_stack::Result<(), GError> {
+        let frames = app.models.cams()?.get()?;
 
         let frame1 = gesture_ease::ImageFrame {
             frame: frames.cam1.into(),
-            width: config.camera1.img_width,
-            height: config.camera1.img_height,
+            width: app.config.camera1.img_width,
+            height: app.config.camera1.img_height,
         };
 
         let frame2 = gesture_ease::ImageFrame {
             frame: frames.cam2.into(),
-            width: config.camera2.img_width,
-            height: config.camera2.img_height,
+            width: app.config.camera2.img_width,
+            height: app.config.camera2.img_height,
         };
 
         if let Some(devices) = app.next(frame1, frame2)? {
