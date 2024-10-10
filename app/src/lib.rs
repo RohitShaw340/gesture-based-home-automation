@@ -1,17 +1,8 @@
 use camera::CameraProc;
 use config::Config;
-use error_stack::{Result, ResultExt};
+use error_stack::ResultExt;
 use rppal::gpio::Gpio;
-use serde::Deserialize;
-use std::{
-    collections::HashSet,
-    fmt,
-    io::Read,
-    os::unix::net::{UnixListener, UnixStream},
-    sync::{Arc, LazyLock, RwLock},
-    thread,
-};
-use strum::EnumCount;
+use std::{fmt, os::unix::net::UnixStream, sync::Arc};
 use threadpool::ThreadPool;
 use traits::Responder;
 

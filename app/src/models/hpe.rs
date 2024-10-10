@@ -2,7 +2,6 @@ use std::{
     ops::{Deref, DerefMut},
     os::unix::net::UnixStream,
     sync::Arc,
-    thread::{self, JoinHandle},
 };
 
 use error_stack::{Result, ResultExt};
@@ -47,22 +46,6 @@ impl HeadPoseEstimation {
         self.send_ipc(&frame, width, height)?;
         let res = self.recv_ipc()?;
         serde_json::from_slice(&res).change_context(GError::IpcError)
-    }
-
-    pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
-        let instance = self.clone();
-        // TODO: logging
-        println!("HPE model connected");
-
-        thread::spawn(move || loop {
-            let (w, h, _img) = instance.recv_img()?;
-
-            instance.send_ipc(&_img, w, h)?;
-            let res = instance.recv_ipc()?;
-            let res: HPEPreds = serde_json::from_slice(&res).change_context(GError::IpcError)?;
-
-            //instance.send_response(res).unwrap();
-        })
     }
 
     pub fn send(&self, img: ImageFrame) -> Result<(), GError> {
