@@ -11,15 +11,15 @@ use serde::Deserialize;
 
 use crate::{
     traits::{Responder, WantIpc},
-    GError, HasImagePosition, ImageProcessor,
+    GError, HasImagePosition, ImageFrame, ImageProcessor,
 };
 
 #[derive(Clone)]
 pub struct GestureDetection {
     image_sender: Sender<(u32, u32, Arc<[u8]>)>,
     image_receiver: Receiver<(u32, u32, Arc<[u8]>)>,
-    response_sender: Sender<GesturePreds>,
-    response_receiver: Receiver<GesturePreds>,
+    response_sender: Sender<error_stack::Result<GesturePreds, GError>>,
+    response_receiver: Receiver<error_stack::Result<GesturePreds, GError>>,
     unix_stream: Arc<UnixStream>,
 }
 
@@ -38,6 +38,18 @@ impl GestureDetection {
         }
     }
 
+    pub fn execute(&self, img: ImageFrame) -> error_stack::Result<GesturePreds, GError> {
+        let ImageFrame {
+            frame,
+            width,
+            height,
+        } = img;
+
+        self.send_ipc(&frame, width, height)?;
+        let res = self.recv_ipc()?;
+        serde_json::from_slice(&res).change_context(GError::IpcError)
+    }
+
     pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
         let instance = self.clone();
         // TODO: logging
@@ -51,7 +63,7 @@ impl GestureDetection {
             let res: GesturePreds =
                 serde_json::from_slice(&res).change_context(GError::IpcError)?;
 
-            instance.send_response(res)?;
+            //instance.send_response(res)?;
         })
     }
 
@@ -60,7 +72,7 @@ impl GestureDetection {
     }
 
     pub fn recv(&self) -> Result<GesturePreds, GError> {
-        self.recv_response()
+        self.recv_response()?
     }
 }
 
@@ -75,7 +87,7 @@ impl ImageProcessor for GestureDetection {
 }
 
 impl Responder for GestureDetection {
-    type Response = GesturePreds;
+    type Response = error_stack::Result<GesturePreds, GError>;
 
     fn response_sender(&self) -> &Sender<Self::Response> {
         &self.response_sender

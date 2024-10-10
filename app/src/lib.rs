@@ -1,15 +1,19 @@
 use camera::CameraProc;
 use config::Config;
-use error_stack::Result;
+use error_stack::{Result, ResultExt};
+use rppal::gpio::Gpio;
+use serde::Deserialize;
 use std::{
     collections::HashSet,
     fmt,
     io::Read,
     os::unix::net::{UnixListener, UnixStream},
-    sync::{Arc, RwLock},
+    sync::{Arc, LazyLock, RwLock},
     thread,
 };
 use strum::EnumCount;
+use threadpool::ThreadPool;
+use traits::Responder;
 
 use models::{GestureDetection, HeadDetection, HeadPoseEstimation};
 
@@ -70,6 +74,26 @@ pub enum Process {
     Camera,
 }
 
+impl Process {
+    // TODO: instead of harcoding, add this to some config
+    pub fn addr(&self) -> &str {
+        match self {
+            Self::Camera => "/tmp/picam.sock",
+            Self::HPE => "/tmp/hpe.sock",
+            Self::HeadDetection => "/tmp/head.sock",
+            Self::GestureRecognition => "/tmp/gesture.sock",
+        }
+    }
+
+    pub fn connect(&self) -> error_stack::Result<UnixStream, GError> {
+        UnixStream::connect(self.addr()).change_context(GError::ConnectionError)
+    }
+
+    pub fn connect_at(addr: impl AsRef<str>) -> error_stack::Result<UnixStream, GError> {
+        UnixStream::connect(addr.as_ref()).change_context(GError::ConnectionError)
+    }
+}
+
 impl From<&str> for Process {
     fn from(value: &str) -> Self {
         match value {
@@ -93,145 +117,26 @@ impl fmt::Display for Process {
     }
 }
 
+#[derive(Clone)]
 pub struct Models {
-    pset: Arc<RwLock<HashSet<Process>>>,
-    listener: UnixListener,
-    hpe: Arc<RwLock<Option<HeadPoseEstimation>>>,
-    gesture: Arc<RwLock<Option<GestureDetection>>>,
-    head: Arc<RwLock<Option<HeadDetection>>>,
-    cams: Arc<RwLock<Option<CameraProc>>>,
+    pub hpe: HeadPoseEstimation,
+    pub gesture: GestureDetection,
+    pub head: HeadDetection,
+    pub cams: CameraProc,
 }
 
 impl Models {
-    pub fn new(listener: UnixListener) -> Self {
-        Self {
-            pset: Default::default(),
-            hpe: Default::default(),
-            gesture: Default::default(),
-            head: Default::default(),
-            cams: Default::default(),
-            listener,
-        }
-    }
-
-    pub fn hpe(&self) -> Result<HeadPoseEstimation, GError> {
-        self.hpe
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or(GError::ModelUninit.into())
-    }
-
-    pub fn gesture(&self) -> Result<GestureDetection, GError> {
-        self.gesture
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or(GError::ModelUninit.into())
-    }
-
-    pub fn head_detection(&self) -> Result<HeadDetection, GError> {
-        self.head
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or(GError::ModelUninit.into())
-    }
-
-    pub fn cams(&self) -> Result<CameraProc, GError> {
-        self.cams
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or(GError::ModelUninit.into())
-    }
-
-    pub fn add_process(&mut self, model: Process, stream: UnixStream, config: &Config) {
-        match model {
-            Process::HPE => {
-                let model = HeadPoseEstimation::new(stream);
-                let handle = model.run();
-                {
-                    *self.hpe.write().unwrap() = Some(model);
-                }
-                let hpe = self.hpe.clone();
-                thread::spawn(move || {
-                    // TODO: logging
-                    handle.join();
-                    *hpe.write().unwrap() = None;
-                });
-            }
-            Process::GestureRecognition => {
-                let model = GestureDetection::new(stream);
-                let handle = model.run();
-                {
-                    *self.gesture.write().unwrap() = Some(model);
-                }
-                let gesture = self.gesture.clone();
-                thread::spawn(move || {
-                    // TODO: logging
-                    handle.join();
-                    *gesture.write().unwrap() = None;
-                });
-            }
-            Process::HeadDetection => {
-                let model = HeadDetection::new(stream);
-                let handle = model.run();
-                {
-                    *self.head.write().unwrap() = Some(model);
-                }
-                let head = self.head.clone();
-                thread::spawn(move || {
-                    // TODO: logging
-                    handle.join();
-                    *head.write().unwrap() = None;
-                });
-            }
-            Process::Camera => {
-                let model = CameraProc::new(
-                    stream,
-                    config.camera1.img_width,
-                    config.camera1.img_height,
-                    config.camera2.img_width,
-                    config.camera2.img_height,
-                );
-                let handle = model.run();
-                {
-                    *self.cams.write().unwrap() = Some(model);
-                }
-                let cams = self.cams.clone();
-                thread::spawn(move || {
-                    // TODO: logging
-                    handle.join();
-                    *cams.write().unwrap() = None;
-                });
-            }
-        }
-
-        self.pset.write().unwrap().insert(model);
-    }
-
-    pub fn len(&self) -> usize {
-        self.pset.read().unwrap().len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn wait_for_connection(&mut self, config: &Config) {
-        while self.len() < Process::COUNT {
-            let (mut stream, _addr) = self.listener.accept().unwrap();
-
-            let mut buffer = [0; 1024];
-            let bytes_read = stream.read(&mut buffer).unwrap();
-            let model: Process = String::from_utf8_lossy(&buffer[..bytes_read])
-                .as_ref()
-                .into();
-
-            self.add_process(model, stream, config);
-            println!("Processes connected: {}", self.len())
-        }
+    pub fn new() -> error_stack::Result<Self, GError> {
+        let hpe = HeadPoseEstimation::new(Process::HPE.connect()?);
+        let gesture = GestureDetection::new(Process::GestureRecognition.connect()?);
+        let head = HeadDetection::new(Process::HeadDetection.connect()?);
+        let cams = CameraProc::new(Process::Camera.connect()?);
+        Ok(Self {
+            hpe,
+            gesture,
+            head,
+            cams,
+        })
     }
 }
 
@@ -245,11 +150,79 @@ pub struct ImageFrame {
 pub struct App {
     pub config: Config,
     pub models: Models,
+    pub pool: ThreadPool,
 }
 
 impl App {
-    pub fn new(config: Config, models: Models) -> App {
-        App { config, models }
+    pub fn new(config: Config) -> error_stack::Result<App, GError> {
+        Ok(App {
+            config,
+            models: Models::new()?,
+            pool: ThreadPool::new(4),
+        })
+    }
+
+    pub fn hpe(&self, frame: ImageFrame) {
+        let models = self.models.clone();
+        self.pool.execute(move || {
+            let res = models.hpe.execute(frame);
+            models
+                .hpe
+                .send_response(res)
+                .change_context(GError::CommError)
+                .unwrap();
+        });
+    }
+
+    pub fn gesture(&self, frame: ImageFrame) {
+        let models = self.models.clone();
+        self.pool.execute(move || {
+            let res = models.gesture.execute(frame);
+            models
+                .gesture
+                .send_response(res)
+                .change_context(GError::CommError)
+                .unwrap();
+        });
+    }
+
+    pub fn head(&self, frame: ImageFrame) {
+        let models = self.models.clone();
+        self.pool.execute(move || {
+            let res = models.head.execute(frame);
+            models
+                .head
+                .send_response(res)
+                .change_context(GError::CommError)
+                .unwrap();
+        });
+    }
+
+    pub fn run(&self) -> error_stack::Result<(), GError> {
+        // TODO: move this to device
+        let gpio = Gpio::new().change_context(GError::GpioError)?;
+
+        let camera::Frames {
+            cam1: frame1,
+            cam2: frame2,
+        } = self.models.cams.get_frames()?;
+
+        if let Some(devices) = self.next(frame1, frame2)? {
+            for (device, gesture) in devices {
+                // TODO: logging
+                println!("gesture {:?} on device {}", gesture, device.name);
+                let mut pin = gpio
+                    .get(device.pin)
+                    .change_context(GError::GpioError)?
+                    .into_output();
+                pin.set_reset_on_drop(false);
+                pin.toggle();
+                // TODO: logging
+                println!("pin state: {}", pin.is_set_low());
+            }
+        }
+
+        Ok(())
     }
 
     pub fn next(
@@ -259,12 +232,12 @@ impl App {
     ) -> error_stack::Result<Option<Vec<(config::Device, models::Gesture)>>, GError> {
         let (gestures, head_positions) = {
             // send frame1 to gesture detection model
-            self.models.gesture()?.send(frame1.clone())?;
+            self.gesture(frame1.clone());
             // send frame2 to head detection model
-            self.models.head_detection()?.send(frame2.clone())?;
+            self.head(frame2.clone());
 
-            let mut head_positions = self.models.head_detection()?.recv()?;
-            let mut gestures = self.models.gesture()?.recv()?;
+            let mut head_positions = self.models.head.recv()?;
+            let mut gestures = self.models.gesture.recv()?;
 
             math::sort_horizontal(&mut head_positions);
             math::sort_horizontal(&mut gestures);
@@ -275,7 +248,7 @@ impl App {
         // proceed if any gesture is not none
         if gestures.iter().any(|x| !x.is_none()) {
             // send frame1 to hpe model
-            self.models.hpe()?.send(frame1.clone())?;
+            self.hpe(frame1.clone());
 
             // in the meantime calculate positition of head which had a gesture
             let positions = gestures.iter().zip(head_positions.iter()).map(|(g, h)| {
@@ -296,7 +269,7 @@ impl App {
             });
 
             let head_poses = {
-                let mut hp = self.models.hpe().unwrap().recv().unwrap();
+                let mut hp = self.models.hpe.recv()?;
                 math::sort_horizontal(&mut hp);
                 hp
             };

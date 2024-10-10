@@ -78,6 +78,12 @@ pub(crate) trait WantIpc {
             .write_u32::<NetworkEndian>(data)
             .change_context(GError::IpcError)
     }
+
+    fn recv_u32(&self) -> Result<u32, GError> {
+        self.unix_stream()
+            .read_u32::<NetworkEndian>()
+            .change_context(GError::IpcError)
+    }
 }
 
 pub trait HasGlamPosition {

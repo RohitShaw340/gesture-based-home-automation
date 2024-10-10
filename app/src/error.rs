@@ -10,6 +10,8 @@ pub enum GError {
     ConfigError,
     ModelUninit,
     CameraError,
+    ConnectionError,
+    GpioError,
 }
 
 impl fmt::Display for GError {
@@ -21,6 +23,9 @@ impl fmt::Display for GError {
             Self::MathError => write!(f, "Error in math operation"),
             Self::ModelUninit => write!(f, "Model used before initializing"),
             Self::CameraError => write!(f, "Camera Error"),
+            // TODO:
+            Self::ConnectionError => write!(f, ". Error"),
+            Self::GpioError => write!(f, "hagg"),
         }
     }
 }

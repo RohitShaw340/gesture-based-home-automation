@@ -1,14 +1,9 @@
 use crate::traits::{GenProcess, Responder, WantIpc};
-use crate::GError;
+use crate::{GError, ImageFrame};
 use error_stack::Result;
 use flume::unbounded;
 use flume::{Receiver, Sender};
-use serde::Deserialize;
-use std::{
-    os::unix::net::UnixStream,
-    sync::Arc,
-    thread::{self, JoinHandle},
-};
+use std::{os::unix::net::UnixStream, sync::Arc};
 
 #[derive(Clone)]
 pub struct CameraProc {
@@ -16,15 +11,11 @@ pub struct CameraProc {
     data_receiver: Receiver<u32>,
     response_sender: Sender<Frames>,
     response_receiver: Receiver<Frames>,
-    w1: u32,
-    w2: u32,
-    h1: u32,
-    h2: u32,
     unix_stream: Arc<UnixStream>,
 }
 
 impl CameraProc {
-    pub fn new(unix_stream: UnixStream, w1: u32, h1: u32, w2: u32, h2: u32) -> Self {
+    pub fn new(unix_stream: UnixStream) -> Self {
         let (data_sender, data_receiver) = unbounded();
         let (response_sender, response_receiver) = unbounded();
         let unix_stream = Arc::new(unix_stream);
@@ -32,47 +23,37 @@ impl CameraProc {
         Self {
             data_sender,
             data_receiver,
-            w1,
-            w2,
-            h1,
-            h2,
             response_sender,
             response_receiver,
             unix_stream,
         }
     }
 
-    pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
-        let instance = self.clone();
-        // TODO: logging
-        println!("Head Detection model connected");
+    pub fn get_frames(&self) -> error_stack::Result<Frames, GError> {
+        self.send_u32(1)?;
+        let w1 = self.recv_u32()?;
+        let h1 = self.recv_u32()?;
+        let img1 = self.recv_ipc()?;
+        self.send_u32(2)?;
+        let w2 = self.recv_u32()?;
+        let h2 = self.recv_u32()?;
+        let img2 = self.recv_ipc()?;
 
-        let w1 = self.w1;
-        let w2 = self.w2;
-        let h1 = self.h1;
-        let h2 = self.h2;
+        let img1 = ImageFrame {
+            frame: img1.into(),
+            width: w1,
+            height: h1,
+        };
 
-        thread::spawn(move || {
-            instance.send_u32(w1)?;
-            instance.send_u32(h1)?;
+        let img2 = ImageFrame {
+            frame: img2.into(),
+            width: w2,
+            height: h2,
+        };
 
-            instance.send_u32(w2)?;
-            instance.send_u32(h2)?;
-            loop {
-                let sig = instance.recv_data()?;
-
-                instance.send_u32(sig)?;
-                let img1 = instance.recv_ipc()?;
-                instance.send_u32(2)?;
-                let img2 = instance.recv_ipc()?;
-
-                let res = Frames {
-                    cam1: img1,
-                    cam2: img2,
-                };
-
-                instance.send_response(res)?;
-            }
+        Ok(Frames {
+            cam1: img1,
+            cam2: img2,
         })
     }
 
@@ -112,8 +93,8 @@ impl WantIpc for CameraProc {
     }
 }
 
-#[derive(Default, Debug, Deserialize)]
+#[derive(Debug)]
 pub struct Frames {
-    pub cam1: Vec<u8>,
-    pub cam2: Vec<u8>,
+    pub cam1: ImageFrame,
+    pub cam2: ImageFrame,
 }

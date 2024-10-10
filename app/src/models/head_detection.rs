@@ -18,8 +18,8 @@ use crate::{
 pub struct HeadDetection {
     image_sender: Sender<(u32, u32, Arc<[u8]>)>,
     image_receiver: Receiver<(u32, u32, Arc<[u8]>)>,
-    response_sender: Sender<HeadPreds>,
-    response_receiver: Receiver<HeadPreds>,
+    response_sender: Sender<error_stack::Result<HeadPreds, GError>>,
+    response_receiver: Receiver<error_stack::Result<HeadPreds, GError>>,
     unix_stream: Arc<UnixStream>,
 }
 
@@ -38,6 +38,18 @@ impl HeadDetection {
         }
     }
 
+    pub fn execute(&self, img: ImageFrame) -> error_stack::Result<HeadPreds, GError> {
+        let ImageFrame {
+            frame,
+            width,
+            height,
+        } = img;
+
+        self.send_ipc(&frame, width, height)?;
+        let res = self.recv_ipc()?;
+        serde_json::from_slice(&res).change_context(GError::IpcError)
+    }
+
     pub fn run(&self) -> JoinHandle<error_stack::Result<(), GError>> {
         let instance = self.clone();
         // TODO: logging
@@ -50,7 +62,7 @@ impl HeadDetection {
             let res = instance.recv_ipc()?;
             let res: HeadPreds = serde_json::from_slice(&res).change_context(GError::IpcError)?;
 
-            instance.send_response(res)?;
+            //instance.send_response(res)?;
         })
     }
 
@@ -59,7 +71,7 @@ impl HeadDetection {
     }
 
     pub fn recv(&self) -> Result<HeadPreds, GError> {
-        self.recv_response()
+        self.recv_response()?
     }
 }
 
@@ -74,7 +86,7 @@ impl ImageProcessor for HeadDetection {
 }
 
 impl Responder for HeadDetection {
-    type Response = HeadPreds;
+    type Response = error_stack::Result<HeadPreds, GError>;
 
     fn response_sender(&self) -> &Sender<Self::Response> {
         &self.response_sender
