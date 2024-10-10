@@ -2,16 +2,15 @@ import time
 import socket
 import mediapipe as mp
 import numpy as np
-import io
 import struct
 import json
+import argparse
+import os
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from mediapipe.framework.formats import landmark_pb2
 
 import tensorflow as tf
-import cv2
 
 DETECTION_RESULT = None
 
@@ -70,7 +69,7 @@ def preprocess_image(img, w, h):
                     temp.append([landmark.x, landmark.y, landmark.z])
                     # cx, cy = int(landmark.x * w), int(landmark.y * h)
                     # cv2.circle(frame, (cx, cy), 5, (255, 0, 0), -1)
-            nose_coords.append((temp[0][0]*w,temp[0][1]*h))
+            nose_coords.append((temp[0][0]*w, temp[0][1]*h))
             data = np.array(temp)
             center_x = data[:, 0].mean()
             center_y = data[:, 1].mean()
@@ -83,7 +82,7 @@ def preprocess_image(img, w, h):
         keypoints = np.array(keypoints)
         return keypoints, nose_coords
 
-    return None,None
+    return None, None
 
 
 def predict_gesture(data):
@@ -124,8 +123,8 @@ def run():
     img_height_bytes = sock.recv(4)
     data_len_bytes = sock.recv(4)
     if len(data_len_bytes) == 0:
-        print("Connection closed, exiting...")
-        exit(1)
+        print("Connection closed, returning...")
+        raise
 
     img_width = struct.unpack("!I", img_width_bytes)[0]
     img_height = struct.unpack("!I", img_height_bytes)[0]
@@ -143,7 +142,8 @@ def run():
     if key_points_multiple_person is not None:
         gesture_prediction = []
         for idx, key_points in enumerate(key_points_multiple_person):
-            gesture_prediction.append([predict_gesture(key_points), nose_coords[idx]])
+            gesture_prediction.append(
+                [predict_gesture(key_points), nose_coords[idx]])
         json_data = []
         for i in gesture_prediction:
             dict = {"gesture": i[0], "nose_x": i[1][0], "nose_y": i[1][1]}
@@ -160,13 +160,39 @@ def run():
         sock.sendall(gesture_prediction.encode())
     time.sleep(0.1)
 
-if __name__ == "__main__":
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(config["server_address"])
-    sock.setblocking(True)
 
-    # Send the process identifier to the Rust server
-    sock.sendall(config["process_id"].encode())
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--socket")
+
+    args = parser.parse_args()
+
+    # Socket file path
+    socket_path = args.socket if args.socket else "/tmp/gesture.sock"
+
+    # Remove the socket file if it already exists
+    try:
+        os.unlink(socket_path)
+    except OSError:
+        if os.path.exists(socket_path):
+            raise
+
+    # Create a Unix domain socket
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    # Bind the socket to the path
+    print(f"Starting up on {socket_path}")
+    sock.bind(socket_path)
+
+    # Listen for incoming connections
+    sock.listen(1)
 
     while True:
-        run()
+        print("Waiting for a connection")
+        connection, client_address = sock.accept()
+        try:
+            while True:
+                run()
+        finally:
+            # Clean up the connection
+            connection.close()

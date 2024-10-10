@@ -9,8 +9,6 @@ from model import DirectMHPInfer
 from utils.general import scale_coords
 from utils.augmentations import letterbox
 
-import cv2
-
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = DirectMHPInfer(weights="weights/agora_m_best.pt", device=device)
@@ -22,7 +20,8 @@ config = {
     "server_address": "/tmp/gesurease.sock",
     "img_size": 320,
     "stride": model.model.stride.max().item(),
-    "prediction": ["x1", "y1", "x2", "y2", "conf", "class", "pitch", "yaw", "roll"],
+    "prediction":
+        ["x1", "y1", "x2", "y2", "conf", "class", "pitch", "yaw", "roll"],
     "debug": False,
 }
 
@@ -31,7 +30,8 @@ def preprocess(img: np.ndarray, new_img_size, stride, auto=True):
     old_shape = img.shape
 
     # padded resize
-    img = letterbox(im=img, new_shape=new_img_size, stride=stride, auto=auto)[0]
+    img = letterbox(im=img, new_shape=new_img_size,
+                    stride=stride, auto=auto)[0]
 
     # convert
     img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW
@@ -42,7 +42,6 @@ def preprocess(img: np.ndarray, new_img_size, stride, auto=True):
 
 def to_radiants(pitch_yaw_roll: np.ndarray):
     from math import pi
-
 
     if pitch_yaw_roll.shape[0] < 1:
         return pitch_yaw_roll
@@ -79,7 +78,8 @@ def pred(img, w, h):
     else:
         out = opt_model(img)[0]
 
-    out[:, :4] = scale_coords(img.shape[2:], out[:, :4].clone().detach(), old_shape[:2])
+    out[:, :4] = scale_coords(
+        img.shape[2:], out[:, :4].clone().detach(), old_shape[:2])
     out[:, 6:] = to_radiants(out[:, 6:])
 
     out = [t.cpu().detach().numpy().tolist() for t in out]
@@ -94,7 +94,7 @@ def run():
     data_len_bytes = sock.recv(4)
     if len(data_len_bytes) == 0:
         print("Connection closed, exiting...")
-        exit(1)
+        raise
 
     img_width = struct.unpack("!I", img_width_bytes)[0]
     img_height = struct.unpack("!I", img_height_bytes)[0]
@@ -127,13 +127,40 @@ def run():
 
 if __name__ == "__main__":
     import time
+    import os
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--socket")
+
+    args = parser.parse_args()
+
+    # Socket file path
+    socket_path = args.socket if args.socket else "/tmp/hpe.sock"
+
+    # Remove the socket file if it already exists
+    try:
+        os.unlink(socket_path)
+    except OSError:
+        if os.path.exists(socket_path):
+            raise
+
+    # Create a Unix domain socket
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(config["server_address"])
-    sock.setblocking(True)
 
-    # Send the process identifier to the Rust server
-    sock.sendall(config["process_id"].encode())
+    # Bind the socket to the path
+    print(f"Starting up on {socket_path}")
+    sock.bind(socket_path)
+
+    # Listen for incoming connections
+    sock.listen(1)
 
     while True:
-        run()
+        print("Waiting for a connection")
+        connection, client_address = sock.accept()
+        try:
+            while True:
+                run()
+        finally:
+            # Clean up the connection
+            connection.close()

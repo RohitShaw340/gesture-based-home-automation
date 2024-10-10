@@ -1,13 +1,10 @@
-import socket
 from picamera2 import Picamera2
-import numpy as np
-import struct
 import threading
-import json
 import argparse
 import time
 
 config = {"process_id": "cam", "server_address": "/tmp/gesurease.sock"}
+
 
 def capture_and_save(camera_id, w, h, file_name):
     picam2 = Picamera2(camera_num=camera_id)
@@ -30,6 +27,7 @@ def capture_and_save(camera_id, w, h, file_name):
 
 def run():
     pass
+
 
 if __name__ == "__main__":
     import datetime

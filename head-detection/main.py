@@ -1,15 +1,17 @@
+import argparse
 import time
 import socket
 import mediapipe as mp
 import numpy as np
 import struct
 import json
+import os
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-import cv2
 
 DETECTION_RESULT = None
+
 
 def save_result(
     result: vision.PoseLandmarkerResult,
@@ -21,7 +23,8 @@ def save_result(
 
 
 # Initialize the pose landmarker model
-base_options = python.BaseOptions(model_asset_path="./pose_landmarker_lite.task")
+base_options = python.BaseOptions(
+    model_asset_path="./pose_landmarker_lite.task")
 options = vision.PoseLandmarkerOptions(
     base_options=base_options,
     running_mode=vision.RunningMode.LIVE_STREAM,
@@ -46,8 +49,9 @@ def preprocess_image(img, w, h):
 
     if DETECTION_RESULT is not None:
         for pose_landmarks in DETECTION_RESULT.pose_landmarks:
-            temp = [pose_landmarks[0].x, pose_landmarks[0].y, pose_landmarks[0].z]
-            nose_coords.append((temp[0],temp[1]))
+            temp = [pose_landmarks[0].x,
+                    pose_landmarks[0].y, pose_landmarks[0].z]
+            nose_coords.append((temp[0], temp[1]))
 
         return nose_coords
 
@@ -66,7 +70,7 @@ def run():
     data_len_bytes = sock.recv(4)
     if len(data_len_bytes) == 0:
         print("Connection closed, exiting...")
-        exit(1)
+        raise
 
     img_width = struct.unpack("!I", img_width_bytes)[0]
     img_height = struct.unpack("!I", img_height_bytes)[0]
@@ -75,7 +79,6 @@ def run():
     img = sock.recv(data_len)
     while len(img) < data_len:
         img += sock.recv(data_len - len(img))
-
 
     # print(img)
     nose_coords = preprocess_image(img, img_width, img_height)
@@ -97,13 +100,39 @@ def run():
         sock.sendall(json_response.encode())
     time.sleep(0.1)
 
-if __name__ == "__main__":
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(config["server_address"])
-    sock.setblocking(True)
 
-    # Send the process identifier to the Rust server
-    sock.sendall(config["process_id"].encode())
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--socket")
+
+    args = parser.parse_args()
+
+    # Socket file path
+    socket_path = args.socket if args.socket else "/tmp/head.sock"
+
+    # Remove the socket file if it already exists
+    try:
+        os.unlink(socket_path)
+    except OSError:
+        if os.path.exists(socket_path):
+            raise
+
+    # Create a Unix domain socket
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    # Bind the socket to the path
+    print(f"Starting up on {socket_path}")
+    sock.bind(socket_path)
+
+    # Listen for incoming connections
+    sock.listen(1)
 
     while True:
-        run()
+        print("Waiting for a connection")
+        connection, client_address = sock.accept()
+        try:
+            while True:
+                run()
+        finally:
+            # Clean up the connection
+            connection.close()
