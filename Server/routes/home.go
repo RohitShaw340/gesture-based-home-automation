@@ -6,15 +6,19 @@ import (
 	"os/exec"
 	"server/Utils"
 	"strconv"
+	"sync"
 )
 
-type runner_status struct {
-	Pids          []int
-	Process_Names []string
-}
+// type runner_status struct {
+// 	Pids          []int
+// 	Process_Names []string
+// }
 
-// var Process_Status runner_status
+// Tracks Pid of active services
 var Process_Status = make(map[string]int)
+
+// Mutex for Process_Status
+var m sync.Mutex
 
 func GetHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
@@ -24,7 +28,8 @@ func GetHome(w http.ResponseWriter, r *http.Request) {
 func Test1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
-	err := Utils.CheckAndKillService("Test1", &Process_Status)
+	err := Utils.CheckAndKillService("Test1", &Process_Status, &m)
+
 	if err != nil {
 		w.Write([]byte("Unable to restart service"))
 		return
@@ -37,7 +42,10 @@ func Test1(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("unable to capture images for calibration"))
 	}
 
+	m.Lock()
 	Process_Status["Test1"] = runner.Process.Pid
+	m.Unlock()
+
 	w.Write([]byte("Test 1 Launched"))
 }
 
@@ -45,7 +53,9 @@ func Test2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
 	// Kill Servise if already running
-	err := Utils.CheckAndKillService("Test2", &Process_Status)
+
+	err := Utils.CheckAndKillService("Test2", &Process_Status, &m)
+
 	if err != nil {
 		w.Write([]byte("Unable to restart service"))
 		return
@@ -59,7 +69,10 @@ func Test2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.Lock()
 	Process_Status["Test2"] = runner.Process.Pid
+	m.Unlock()
+
 	w.Write([]byte("Test 2 Launched"))
 }
 
@@ -81,7 +94,9 @@ func Cancel(w http.ResponseWriter, r *http.Request) {
 	// process, err := os.FindProcess(int(test1.pid))
 
 	for service_name, pid := range Process_Status {
-		err := Utils.CheckAndKillService(service_name, &Process_Status)
+
+		err := Utils.CheckAndKillService(service_name, &Process_Status, &m)
+
 		if err != nil {
 			w.Write([]byte(service_name + " : " + strconv.FormatInt(int64(pid), 10) + " -> Unable to Stop \n"))
 		} else {
