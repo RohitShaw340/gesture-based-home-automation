@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
+)
 
-	"github.com/stianeikeland/go-rpio/v4"
+const (
+	ROTATION_IMAGE_FILE_NAME = "rotation.jpeg"
+	ROTATION_IMAGE_DIR       = "../Server/rotation_images"
 )
 
 type RotationRequest struct {
@@ -21,10 +25,11 @@ type ServoConfig struct {
 	CurrentPosition int `json:"current_position"`
 }
 
+// Load current servo position
 func getCurrentPosition() (ServoConfig, error) {
 	var position ServoConfig
 
-	file, err := os.Open("/servo_config.json")
+	file, err := os.Open("servo_config.json")
 	if err != nil {
 		return ServoConfig{}, err
 	}
@@ -38,8 +43,9 @@ func getCurrentPosition() (ServoConfig, error) {
 	return position, nil
 }
 
-func setPositon(position ServoConfig) error {
-	file, err := os.Create("/servo_config.json")
+// Save new servo position
+func setPosition(position ServoConfig) error {
+	file, err := os.Create("servo_config.json")
 	if err != nil {
 		return err
 	}
@@ -61,51 +67,84 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ServoConfig, err := getCurrentPosition()
+	// Get current position
+	servoConfig, err := getCurrentPosition()
 	if err != nil {
 		http.Error(w, "Unable to read current position", http.StatusInternalServerError)
 		return
 	}
 
+	// Update position based on direction
 	if req.Direction == "clock" {
-		ServoConfig.CurrentPosition += req.StepSize
+		servoConfig.CurrentPosition += req.StepSize
 	} else if req.Direction == "anticlock" {
-		ServoConfig.CurrentPosition -= req.StepSize
+		servoConfig.CurrentPosition -= req.StepSize
 	} else {
 		http.Error(w, "Invalid direction", http.StatusBadRequest)
 		return
 	}
 
-	var pinNumber int
+	// Ensure position is within servo limits (-80 to 80 degrees)
+	if servoConfig.CurrentPosition < -80 {
+		servoConfig.CurrentPosition = 80
+	} else if servoConfig.CurrentPosition > 80 {
+		servoConfig.CurrentPosition = 80
+	}
+
+	// Select the correct GPIO pin
+	var gpioPinName string
+	switch req.Camera_id {
+	case 1:
+		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam1Pin)
+	case 2:
+		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam2Pin)
+	default:
+		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
+		return
+	}
+
+	absoluteAngle := fmt.Sprintf("%v", servoConfig.CurrentPosition)
+
+	runner := exec.Command("./rotate_camera", "-a", absoluteAngle, "-p", gpioPinName)
+	err = runner.Start()
+	if err != nil {
+		w.Write([]byte("unable to capture images for calibration"))
+	}
+
+	err = runner.Wait()
+	if err != nil {
+		fmt.Printf("Failed to rotate camera: %v", err)
+		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
+		return
+	}
+
+	runner = exec.Command("python", "../picam/take_picture.py", "-o", ROTATION_IMAGE_DIR, "-f", ROTATION_IMAGE_FILE_NAME)
+	err = runner.Start()
+	if err != nil {
+		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
+		return
+	}
+
+	err = runner.Wait()
+	if err != nil {
+		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
+		return
+	}
 
 	switch req.Camera_id {
 	case 1:
-		pinNumber = ServoConfig.Cam1Pin
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", ROTATION_IMAGE_DIR, ROTATION_IMAGE_FILE_NAME))
 	case 2:
-		pinNumber = ServoConfig.Cam2Pin
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", ROTATION_IMAGE_DIR, ROTATION_IMAGE_FILE_NAME))
 	default:
-		http.Error(w, "Invalid camera id", http.StatusBadRequest)
+		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
 	}
 
-	err = rpio.Open()
+	// Save new position
+	err = setPosition(servoConfig)
 	if err != nil {
-		http.Error(w, "Unable to open GPIO", http.StatusInternalServerError)
-		return
-	}
-	defer rpio.Close()
-
-	pin := rpio.Pin(pinNumber)
-	pin.Mode(rpio.Pwm)
-	pin.Freq(64000)
-	pin.DutyCycle(uint32(ServoConfig.CurrentPosition), 100)
-	// pin.Write(uint8(currentPosition))
-
-	fmt.Fprintf(w, "Servo rotated to position: %d", ServoConfig.CurrentPosition)
-
-	err = setPositon(ServoConfig)
-	if err != nil {
-		http.Error(w, "Unable to set position", http.StatusInternalServerError)
+		http.Error(w, "Unable to save position", http.StatusInternalServerError)
 		return
 	}
 }

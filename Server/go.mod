@@ -1,8 +1,10 @@
 module server
 
-go 1.22.3
+go 1.22.6
+
+toolchain go1.23.7
 
 require (
-	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/stianeikeland/go-rpio/v4 v4.6.0 // indirect
+    github.com/gorilla/mux v1.8.1
+    periph.io/x/periph/conn/gpio/v3 v3.6.8
 )
