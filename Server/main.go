@@ -16,7 +16,7 @@ func main() {
 	router.HandleFunc("/test2", routes.Test2)
 	router.HandleFunc("/cancle", routes.Cancel)
 	router.HandleFunc("/status", routes.Status)
-	router.HandleFunc("/rotate", routes.RotateCamera)
+	router.HandleFunc("/rotate", routes.RotateCamera).Methods("POST")
 
 	err := http.ListenAndServe(":4000", router)
 
