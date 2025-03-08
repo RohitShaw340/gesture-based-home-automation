@@ -53,7 +53,7 @@ func setPositon(position ServoConfig) error {
 	return nil
 }
 
-func rotate_camera(w http.ResponseWriter, r *http.Request) {
+func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	var req RotationRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
