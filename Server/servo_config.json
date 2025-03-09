@@ -1,5 +1,10 @@
 {
-  "cam1_pin": 12,
-  "cam2_pin": 13,
-  "current_position": 0
+  "cam1":{
+    "pin": 13,
+    "current_position": 0
+  },
+  "cam2":{
+    "pin": 12,
+    "current_position": 0
+  }
 }

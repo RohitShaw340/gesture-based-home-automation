@@ -33,6 +33,9 @@ func main() {
 	router.HandleFunc("/cancle", routes.Cancel)
 	router.HandleFunc("/status", routes.Status)
 	router.HandleFunc("/rotate", routes.RotateCamera).Methods("OPTIONS", "POST")
+	router.HandleFunc("/reset-camera-position", routes.ResetCameraPosition).Methods("OPTIONS", "POST")
+	router.HandleFunc("/get-camera-position", routes.GetCameraPosition).Methods("OPTIONS", "GET")
+	router.HandleFunc("/get-picture/{camera-id}", routes.GetCameraPicture).Methods("OPTIONS", "GET")
 
 	err := http.ListenAndServe(":4000", router)
 

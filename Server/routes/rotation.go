@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"os/exec"
-)
+	"server/Utils"
+	"server/constants"
 
-const (
-	ROTATION_IMAGE_FILE_NAME = "rotation.jpeg"
-	ROTATION_IMAGE_DIR       = "../Server/rotation_images"
+	"github.com/gorilla/mux"
 )
 
 type RotationRequest struct {
@@ -19,44 +16,8 @@ type RotationRequest struct {
 	Direction string `json:"direction"`
 }
 
-type ServoConfig struct {
-	Cam1Pin         int `json:"cam1_pin"`
-	Cam2Pin         int `json:"cam2_pin"`
-	CurrentPosition int `json:"current_position"`
-}
-
-// Load current servo position
-func getCurrentPosition() (ServoConfig, error) {
-	var position ServoConfig
-
-	file, err := os.Open("servo_config.json")
-	if err != nil {
-		return ServoConfig{}, err
-	}
-	defer file.Close()
-
-	err = json.NewDecoder(file).Decode(&position)
-	if err != nil {
-		return ServoConfig{}, err
-	}
-
-	return position, nil
-}
-
-// Save new servo position
-func setPosition(position ServoConfig) error {
-	file, err := os.Create("servo_config.json")
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	err = json.NewEncoder(file).Encode(position)
-	if err != nil {
-		return err
-	}
-
-	return nil
+type ResetRequest struct {
+	Camera_id int `json:"camera_id"`
 }
 
 func RotateCamera(w http.ResponseWriter, r *http.Request) {
@@ -68,90 +29,140 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get current position
-	servoConfig, err := getCurrentPosition()
+	servoConfig, err := Utils.GetServoConfig()
 	if err != nil {
 		http.Error(w, "Unable to read current position", http.StatusInternalServerError)
 		return
 	}
 
-	// Update position based on direction
-	if req.Direction == "clock" {
-		servoConfig.CurrentPosition += req.StepSize
-	} else if req.Direction == "anticlock" {
-		servoConfig.CurrentPosition -= req.StepSize
-	} else {
-		http.Error(w, "Invalid direction", http.StatusBadRequest)
+	currentPosition, gpioPinName, err := Utils.GetPositionAndPinFromConfig(req.Camera_id, req.StepSize, req.Direction, servoConfig)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Ensure position is within servo limits (-80 to 80 degrees)
-	if servoConfig.CurrentPosition < -80 || servoConfig.CurrentPosition > 80 {
-		fmt.Printf("Servo limit reached: %v", servoConfig.CurrentPosition)
-		http.Error(w, "Servo limit reached", http.StatusBadRequest)
+	err = Utils.CallCameraRotationScript(currentPosition, gpioPinName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-		// servoConfig.CurrentPosition = 80
 	}
 
-	// Select the correct GPIO pin
+	// Save new position
+	err = Utils.SetPosition(servoConfig)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = Utils.TakePicture()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch req.Camera_id {
+	case 1:
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+	case 2:
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+	default:
+		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
+		return
+	}
+}
+
+func ResetCameraPosition(w http.ResponseWriter, r *http.Request) {
+	var req ResetRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	servoConfig, err := Utils.GetServoConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	var gpioPinName string
 	switch req.Camera_id {
 	case 1:
-		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam1Pin)
+		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam1.Pin)
+		servoConfig.Cam1.CurrentPosition = 0
+
 	case 2:
-		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam2Pin)
+		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam2.Pin)
+		servoConfig.Cam2.CurrentPosition = 0
+
 	default:
 		fmt.Printf("Invalid camera ID: %v", req.Camera_id)
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
 	}
 
-	absoluteAngle := fmt.Sprintf("%v", servoConfig.CurrentPosition)
-
-	runner := exec.Command("./rotate_camera", "-a", absoluteAngle, "-p", gpioPinName)
-	err = runner.Start()
+	err = Utils.CallCameraRotationScript(0, gpioPinName)
 	if err != nil {
-		fmt.Printf("Failed to rotate camera to angle %v : %v", servoConfig.CurrentPosition, err)
-		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = runner.Wait()
+	// Save new position
+	err = Utils.SetPosition(servoConfig)
 	if err != nil {
-		fmt.Printf("Failed to rotate camera to angle %v : %v", servoConfig.CurrentPosition, err)
-		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	runner = exec.Command("python", "../picam/take_picture.py", "-o", ROTATION_IMAGE_DIR, "-f", ROTATION_IMAGE_FILE_NAME)
-	err = runner.Start()
+	err = Utils.TakePicture()
 	if err != nil {
-		fmt.Printf("Failed to take picture: %v", err)
-		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
-		return
-	}
-
-	err = runner.Wait()
-	if err != nil {
-		fmt.Printf("Failed to take picture: %v", err)
-		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	switch req.Camera_id {
 	case 1:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", ROTATION_IMAGE_DIR, ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
 	case 2:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", ROTATION_IMAGE_DIR, ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
 	default:
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
 	}
 
-	// Save new position
-	err = setPosition(servoConfig)
+}
+
+func GetCameraPosition(w http.ResponseWriter, r *http.Request) {
+	servoConfig, err := Utils.GetServoConfig()
 	if err != nil {
-		fmt.Printf("Failed to save position: %v", err)
-		http.Error(w, "Unable to save position", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(servoConfig)
+	if err != nil {
+		http.Error(w, "Unable to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func GetCameraPicture(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	cameraID := vars["camera-id"]
+
+	var imagePath string
+
+	switch cameraID {
+	case "1":
+		imagePath = fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME)
+	case "2":
+		imagePath = fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME)
+	default:
+		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
+		return
+	}
+
+	http.ServeFile(w, r, imagePath)
 }
