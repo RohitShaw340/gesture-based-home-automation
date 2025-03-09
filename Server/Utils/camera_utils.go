@@ -26,18 +26,27 @@ func CallCameraRotationScript(currentPosition int, gpioPinName string) error {
 		return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
 	}
 
-	// err = runner.Wait()
-	// if err != nil {
-	// 	return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
-	// }
+	err = runner.Wait()
+	if err != nil {
+		return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
+	}
 
 	return nil
 }
 
-func TakePicture(delayMilli int) error {
-	delayStr := fmt.Sprintf("%d", delayMilli)
+func TakePicture() error {
+	// delayStr := fmt.Sprintf("%d", delayMilli)
 
-	runner := exec.Command("python", "../picam/take_picture.py", "-o", constants.ROTATION_IMAGE_DIR, "-f", constants.ROTATION_IMAGE_FILE_NAME, "-d", delayStr)
+	runner := exec.Command(
+		"python",
+		"../picam/take_picture.py",
+		"-o",
+		constants.ROTATION_IMAGE_DIR,
+		"-f",
+		constants.ROTATION_IMAGE_FILE_NAME,
+		// "-d",
+		// delayStr,
+	)
 	err := runner.Start()
 	if err != nil {
 		return fmt.Errorf("Failed to take picture: %v", err)
@@ -84,7 +93,11 @@ func SetPosition(position ServoConfig) error {
 	return nil
 }
 
-func GetPositionAndPinFromConfig(camera_id, stepSize int, direction string, servoConfig ServoConfig) (int, string, error) {
+func GetPositionAndPinFromConfig(
+	camera_id, stepSize int,
+	direction string,
+	servoConfig ServoConfig,
+) (int, string, error) {
 	var currentPosition int
 
 	// Select the correct GPIO pin
@@ -92,7 +105,11 @@ func GetPositionAndPinFromConfig(camera_id, stepSize int, direction string, serv
 
 	switch camera_id {
 	case 1:
-		updatedPosition, err := UpdateCameraPosition(servoConfig.Cam1.CurrentPosition, stepSize, direction)
+		updatedPosition, err := UpdateCameraPosition(
+			servoConfig.Cam1.CurrentPosition,
+			stepSize,
+			direction,
+		)
 		if err != nil {
 			return 0, "", fmt.Errorf("Unable to update camera position: %w", err)
 		}
@@ -101,7 +118,11 @@ func GetPositionAndPinFromConfig(camera_id, stepSize int, direction string, serv
 		currentPosition = servoConfig.Cam1.CurrentPosition
 
 	case 2:
-		updatedPosition, err := UpdateCameraPosition(servoConfig.Cam2.CurrentPosition, stepSize, direction)
+		updatedPosition, err := UpdateCameraPosition(
+			servoConfig.Cam2.CurrentPosition,
+			stepSize,
+			direction,
+		)
 		if err != nil {
 			return 0, "", fmt.Errorf("Unable to update camera position: %w", err)
 		}

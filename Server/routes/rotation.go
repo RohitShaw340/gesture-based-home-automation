@@ -59,7 +59,8 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = Utils.TakePicture(400)
+	// err = Utils.TakePicture(400)
+	err = Utils.TakePicture()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -135,7 +136,7 @@ func ResetCameraPosition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = Utils.TakePicture(200)
+	err = Utils.TakePicture()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -189,7 +190,7 @@ func GetCameraPicture(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cameraID := vars["camera-id"]
 
-	err := Utils.TakePicture(0)
+	err := Utils.TakePicture()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
