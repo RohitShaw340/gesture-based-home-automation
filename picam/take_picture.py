@@ -4,6 +4,9 @@ import argparse
 import time
 
 config = {"process_id": "cam", "server_address": "/tmp/gesurease.sock"}
+W_DEFAULT = 1296
+H_DEFAULT = 972
+OUT_DEFAULT = "."
 
 
 def capture_and_save(camera_id, w, h, file_name):
@@ -34,35 +37,35 @@ if __name__ == "__main__":
     from pathlib import Path
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("w1", type=int)
-    parser.add_argument("h1", type=int)
-    parser.add_argument("w2", type=int)
-    parser.add_argument("h2", type=int)
-    parser.add_argument("--f1")
-    parser.add_argument("--f2")
-    parser.add_argument("--file-format")
+    parser.add_argument("-w1", type=int, default=W_DEFAULT)
+    parser.add_argument("-h1", type=int, default=H_DEFAULT)
+    parser.add_argument("-w2", type=int, default=W_DEFAULT)
+    parser.add_argument("-h2", type=int, default=H_DEFAULT)
+    parser.add_argument("-f", "--file-name", type=str)
+    parser.add_argument("-o", "--out-dir", type=str, default=OUT_DEFAULT)
 
     args = parser.parse_args()
 
     now = datetime.datetime.now()
-    file_format = args.file_format if args.file_format else "jpeg"
+    fn = args.file_name if args.file_name else f"{now}.jpeg"
 
     w1 = args.w1
     h1 = args.h1
-    f1 = args.f1 if args.f1 else f"cam1/{now}.{file_format}"
 
     w2 = args.w2
     h2 = args.h2
-    f2 = args.f2 if args.f2 else f"cam2/{now}.{file_format}"
 
-    Path("cam1").mkdir(parents=True, exist_ok=True)
-    Path("cam2").mkdir(parents=True, exist_ok=True)
+    dir1 = f"{args.out_dir}/cam1"
+    dir2 = f"{args.out_dir}/cam2"
+
+    Path(dir1).mkdir(parents=True, exist_ok=True)
+    Path(dir2).mkdir(parents=True, exist_ok=True)
 
     thread_cam0 = threading.Thread(
-        target=capture_and_save, args=(0, w1, h1, f1)
+        target=capture_and_save, args=(0, w1, h1, f"{dir1}/{fn}")
     )
     thread_cam1 = threading.Thread(
-        target=capture_and_save, args=(1, w2, h2, f2)
+        target=capture_and_save, args=(1, w2, h2, f"{dir2}/{fn}")
     )
 
     thread_cam0.start()
