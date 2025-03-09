@@ -108,7 +108,8 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	runner := exec.Command("./rotate_camera", "-a", absoluteAngle, "-p", gpioPinName)
 	err = runner.Start()
 	if err != nil {
-		w.Write([]byte("unable to capture images for calibration"))
+		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
+		return
 	}
 
 	err = runner.Wait()
