@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         hw_pwm,
     )?;
 
-    servo.rotate(angle)?;
+    servo.rotate(angle).inspect_err(|e| println!("[RotatorError] {e}"))?;
 
     Ok(())
 }
