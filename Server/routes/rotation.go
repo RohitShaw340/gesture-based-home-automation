@@ -86,6 +86,7 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure position is within servo limits (-80 to 80 degrees)
 	if servoConfig.CurrentPosition < -80 || servoConfig.CurrentPosition > 80 {
+		fmt.Printf("Servo limit reached: %v", servoConfig.CurrentPosition)
 		http.Error(w, "Servo limit reached", http.StatusBadRequest)
 		return
 		// servoConfig.CurrentPosition = 80
@@ -99,6 +100,7 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	case 2:
 		gpioPinName = fmt.Sprintf("%v", servoConfig.Cam2Pin)
 	default:
+		fmt.Printf("Invalid camera ID: %v", req.Camera_id)
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
 	}
@@ -108,6 +110,7 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	runner := exec.Command("./rotate_camera", "-a", absoluteAngle, "-p", gpioPinName)
 	err = runner.Start()
 	if err != nil {
+		fmt.Printf("Failed to rotate camera: %v", err)
 		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
 		return
 	}
@@ -122,12 +125,14 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	runner = exec.Command("python", "../picam/take_picture.py", "-o", ROTATION_IMAGE_DIR, "-f", ROTATION_IMAGE_FILE_NAME)
 	err = runner.Start()
 	if err != nil {
+		fmt.Printf("Failed to take picture: %v", err)
 		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
 		return
 	}
 
 	err = runner.Wait()
 	if err != nil {
+		fmt.Printf("Failed to take picture: %v", err)
 		http.Error(w, "Failed to take picture", http.StatusInternalServerError)
 		return
 	}
@@ -145,6 +150,7 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	// Save new position
 	err = setPosition(servoConfig)
 	if err != nil {
+		fmt.Printf("Failed to save position: %v", err)
 		http.Error(w, "Unable to save position", http.StatusInternalServerError)
 		return
 	}
