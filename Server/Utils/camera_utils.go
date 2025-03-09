@@ -26,16 +26,18 @@ func CallCameraRotationScript(currentPosition int, gpioPinName string) error {
 		return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
 	}
 
-	err = runner.Wait()
-	if err != nil {
-		return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
-	}
+	// err = runner.Wait()
+	// if err != nil {
+	// 	return fmt.Errorf("Failed to rotate camera to angle %v : %v", absoluteAngle, err)
+	// }
 
 	return nil
 }
 
-func TakePicture() error {
-	runner := exec.Command("python", "../picam/take_picture.py", "-o", constants.ROTATION_IMAGE_DIR, "-f", constants.ROTATION_IMAGE_FILE_NAME)
+func TakePicture(delayMilli int) error {
+	delayStr := fmt.Sprintf("%d", delayMilli)
+
+	runner := exec.Command("python", "../picam/take_picture.py", "-o", constants.ROTATION_IMAGE_DIR, "-f", constants.ROTATION_IMAGE_FILE_NAME, "-d", delayStr)
 	err := runner.Start()
 	if err != nil {
 		return fmt.Errorf("Failed to take picture: %v", err)
