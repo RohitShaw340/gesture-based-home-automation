@@ -110,14 +110,14 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	runner := exec.Command("./rotate_camera", "-a", absoluteAngle, "-p", gpioPinName)
 	err = runner.Start()
 	if err != nil {
-		fmt.Printf("Failed to rotate camera: %v", err)
+		fmt.Printf("Failed to rotate camera to angle %v : %v", servoConfig.CurrentPosition, err)
 		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
 		return
 	}
 
 	err = runner.Wait()
 	if err != nil {
-		fmt.Printf("Failed to rotate camera: %v", err)
+		fmt.Printf("Failed to rotate camera to angle %v : %v", servoConfig.CurrentPosition, err)
 		http.Error(w, "Failed to rotate camera", http.StatusInternalServerError)
 		return
 	}
