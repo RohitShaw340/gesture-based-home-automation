@@ -25,7 +25,7 @@ impl Servo {
         hw_pwm: bool,
     ) -> Result<Self, rppal::gpio::Error> {
         let gpio = Gpio::new()?;
-        let mut pin = gpio.get(gpio_pwm)?.into_output();
+        let pin = gpio.get(gpio_pwm)?.into_output();
         Ok(Self {
             pin,
             period_ms,
@@ -49,9 +49,10 @@ impl Servo {
     fn rotate_sfpwm(&mut self, angle: f64) -> Result<(), rppal::gpio::Error> {
         self.pin.set_pwm(
             Duration::from_millis(self.period_ms),
-            Duration::from_micros(self.angle_to_pulse_width(angle)),
+            Duration::from_micros(dbg!(self.angle_to_pulse_width(angle))),
         )?;
 
+        std::thread::sleep(std::time::Duration::from_millis(500));
         Ok(())
     }
 
@@ -61,15 +62,15 @@ impl Servo {
 
     fn angle_to_pulse_width(&self, angle: f64) -> u64 {
         // TODO: handle error
-        assert!(self.min_angle >= angle);
-        assert!(self.max_angle <= angle);
-        let mid = (self.max_angle - self.min_angle) / 2.0;
+        assert!(self.min_angle <= angle);
+        assert!(self.max_angle >= angle);
+        let mid = (self.max_angle + self.min_angle) / 2.0;
         (if angle < mid {
             self.pulse_min_us as f64
-                + (angle - self.min_angle) * (self.pulse_neutral_us - self.pulse_min_us) as f64
+                + ((angle - self.min_angle) / (mid - self.min_angle)) * (self.pulse_neutral_us - self.pulse_min_us) as f64
         } else {
             self.pulse_max_us as f64
-                - (self.max_angle  - angle) * (self.pulse_max_us - self.pulse_neutral_us) as f64
+                - ((self.max_angle  - angle) / (self.max_angle - mid)) * (self.pulse_max_us - self.pulse_neutral_us) as f64
         }) as u64
     }
 }

@@ -16,13 +16,13 @@ const MAX_ANGLE: f64 = 80.0;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(short, long, allow_hyphen_values = true)]
     angle: f64,
     #[arg(short, long)]
     pin: u8,
-    #[arg(long, default_value_t = MIN_ANGLE)]
+    #[arg(long, default_value_t = MIN_ANGLE, allow_hyphen_values = true)]
     min_angle: f64,
-    #[arg(long, default_value_t = MAX_ANGLE)]
+    #[arg(long, default_value_t = MAX_ANGLE, allow_hyphen_values = true)]
     max_angle: f64,
     #[arg(long, default_value_t = PERIOD_MS)]
     period_ms: u64,

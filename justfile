@@ -11,7 +11,7 @@ target:
 rotator: target
   @echo 'Building rotator'
   cd rotator && cargo build --release
-  cp -f rotator/target/release/rotator target/rotate-camera
+  cp -f rotator/target/release/rotator target/rotate_camera
 
 server: target
   @echo 'Building server'
