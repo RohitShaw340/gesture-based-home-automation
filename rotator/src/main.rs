@@ -9,8 +9,8 @@ const PULSE_MIN_US: u64 = 600;
 const PULSE_NEUTRAL_US: u64 = 1500;
 const PULSE_MAX_US: u64 = 2250;
 
-const MIN_ANGLE: f64 = -80;
-const MAX_ANGLE: f64 = 80;
+const MIN_ANGLE: f64 = -80.0;
+const MAX_ANGLE: f64 = 80.0;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -26,12 +26,12 @@ struct Args {
     max_angle: f64,
     #[arg(long, default_value_t = PERIOD_MS)]
     period_ms: u64,
-    #[arg(long, default_value_t = PULSE_MAX_US)]
-    pulse_min_us: u8,
+    #[arg(long, default_value_t = PULSE_MIN_US)]
+    pulse_min_us: u64,
     #[arg(long, default_value_t = PULSE_NEUTRAL_US)]
-    pulse_neutral_us: u8,
+    pulse_neutral_us: u64,
     #[arg(long, default_value_t = PULSE_MAX_US)]
-    pulse_max_us: u8,
+    pulse_max_us: u64,
     #[arg(long, default_value_t = false)]
     hw_pwm: bool,
 }
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         hw_pwm,
     } = Args::parse();
 
-    let servo = Servo::new(
+    let mut servo = Servo::new(
         pin,
         period_ms,
         pulse_min_us,
