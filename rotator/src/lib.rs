@@ -52,7 +52,7 @@ impl Servo {
             Duration::from_micros(dbg!(self.angle_to_pulse_width(angle))),
         )?;
 
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(400));
         Ok(())
     }
 

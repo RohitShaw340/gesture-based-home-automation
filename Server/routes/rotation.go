@@ -35,7 +35,12 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentPosition, gpioPinName, err := Utils.GetPositionAndPinFromConfig(req.Camera_id, req.StepSize, req.Direction, servoConfig)
+	currentPosition, gpioPinName, err := Utils.GetPositionAndPinFromConfig(
+		req.Camera_id,
+		req.StepSize,
+		req.Direction,
+		servoConfig,
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -54,7 +59,7 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = Utils.TakePicture(200)
+	err = Utils.TakePicture(400)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -62,9 +67,25 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Camera_id {
 	case 1:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(
+			w,
+			r,
+			fmt.Sprintf(
+				"%s/cam1/%s",
+				constants.ROTATION_IMAGE_DIR,
+				constants.ROTATION_IMAGE_FILE_NAME,
+			),
+		)
 	case 2:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(
+			w,
+			r,
+			fmt.Sprintf(
+				"%s/cam2/%s",
+				constants.ROTATION_IMAGE_DIR,
+				constants.ROTATION_IMAGE_FILE_NAME,
+			),
+		)
 	default:
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
@@ -122,9 +143,25 @@ func ResetCameraPosition(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Camera_id {
 	case 1:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(
+			w,
+			r,
+			fmt.Sprintf(
+				"%s/cam1/%s",
+				constants.ROTATION_IMAGE_DIR,
+				constants.ROTATION_IMAGE_FILE_NAME,
+			),
+		)
 	case 2:
-		http.ServeFile(w, r, fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME))
+		http.ServeFile(
+			w,
+			r,
+			fmt.Sprintf(
+				"%s/cam2/%s",
+				constants.ROTATION_IMAGE_DIR,
+				constants.ROTATION_IMAGE_FILE_NAME,
+			),
+		)
 	default:
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return
@@ -162,9 +199,17 @@ func GetCameraPicture(w http.ResponseWriter, r *http.Request) {
 
 	switch cameraID {
 	case "1":
-		imagePath = fmt.Sprintf("%s/cam1/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME)
+		imagePath = fmt.Sprintf(
+			"%s/cam1/%s",
+			constants.ROTATION_IMAGE_DIR,
+			constants.ROTATION_IMAGE_FILE_NAME,
+		)
 	case "2":
-		imagePath = fmt.Sprintf("%s/cam2/%s", constants.ROTATION_IMAGE_DIR, constants.ROTATION_IMAGE_FILE_NAME)
+		imagePath = fmt.Sprintf(
+			"%s/cam2/%s",
+			constants.ROTATION_IMAGE_DIR,
+			constants.ROTATION_IMAGE_FILE_NAME,
+		)
 	default:
 		http.Error(w, "Invalid camera ID", http.StatusBadRequest)
 		return

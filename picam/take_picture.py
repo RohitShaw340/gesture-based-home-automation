@@ -43,6 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("-h2", type=int, default=H_DEFAULT)
     parser.add_argument("-f", "--file-name", type=str)
     parser.add_argument("-o", "--out-dir", type=str, default=OUT_DEFAULT)
+    parser.add_argument("-d", "--delay", type=int)
 
     args = parser.parse_args()
 
@@ -60,6 +61,9 @@ if __name__ == "__main__":
 
     Path(dir1).mkdir(parents=True, exist_ok=True)
     Path(dir2).mkdir(parents=True, exist_ok=True)
+
+    if args.delay is not None:
+        time.sleep(args.delay / 1000)
 
     thread_cam0 = threading.Thread(
         target=capture_and_save, args=(0, w1, h1, f"{dir1}/{fn}")
