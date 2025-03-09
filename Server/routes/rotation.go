@@ -85,10 +85,10 @@ func RotateCamera(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ensure position is within servo limits (-80 to 80 degrees)
-	if servoConfig.CurrentPosition < -80 {
-		servoConfig.CurrentPosition = 80
-	} else if servoConfig.CurrentPosition > 80 {
-		servoConfig.CurrentPosition = 80
+	if servoConfig.CurrentPosition < -80 || servoConfig.CurrentPosition > 80 {
+		http.Error(w, "Servo limit reached", http.StatusBadRequest)
+		return
+		// servoConfig.CurrentPosition = 80
 	}
 
 	// Select the correct GPIO pin
